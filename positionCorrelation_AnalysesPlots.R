@@ -14,11 +14,56 @@ find_gene_name <- function(lst, affProb, ...) {
 }
 
 
-boostrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, ...) {
-# Do bootstraping of the data to obtain a significance threshold.
+modulo_coordinates <- function(pos, per, ...) {
+# Return the modulo coordinates of a list of coordinates.
+  if ( per == FALSE ) {
+    stop("For the 3D correlation a period must be specified.")
+  }
+  modCoords <- pos - pos%/%per * per;
+  return(sort(modCoords))
+}
+
+
+neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = c("spearman", "pearson", "kendall")[1], method = c("1D" ,"3D")[1], per = FALSE, geneList = FALSE, cyclic = TRUE, ...) {
+# Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
+  # Read files and generate the data structures.
+  geMat <- read.table(expressionMatrix, header = TRUE);
+  gp <- read.table(genePositions);
+  gpp <- gp[[2]];
+  names(gpp) <- gp[[1]];
+  # Keep only the genes for which we have expression profiles from the gene expression matrix.
+  genePos <- gpp[rownames(ge)];
+  noGenes <- length(genePos);  
+  # Transform the position to circular coordinates (if is asked).
+  if ( method == "3D" ) {
+    geneCoords <- modulo_coordinates(genePos, per);
+  }
+  else if ( method == "1D" ) {
+    geneCoords <- sort(genePos);
+  }
+  # Calculating correlations.
+  for ( i in 1:nrow(geMat) ) {
+    geneExPr <- geMat[i,];
+    genename <- rownames(geneExPr);
+    geneIndex <- which(geneCoords == geneCoords[[geneName]]);
+    # Check the positioning og the gene index and generate the neighbourhood.
+    if ( geneIndex + n <= noGenes & geneIndex - n >= 1 ) {
+      neighCoords <- c(seq(geneIndex - n , n), seq(geneIndex + 1, n));
+    }
+    else if () {
+    }
+    else if () {
+    }
+  }
+
+}
+
+
+bootstrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, pv = 0.02, ...) {
+# Do bootstraping of the data to obtain a significant spearman correlation threshold.
   noGenes <- dim(expressionMatrix)[1];
   corTld  <- NULL;
-  for ( i in 1:100 ) {
+  for ( i in 1:bootTimes ) {
     randomOrder <- sample(1:noGenes, noGenes, replace = FALSE);
     newData <- expressionMatrix[randomOrder, ];
     corTot <- cor(t(newData), method = "spearman");
@@ -28,7 +73,8 @@ boostrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, ...) {
     }
     corTld <- cbind(corTld, rowSums(corMatrix[, -(n + 1)]) - 1);
   }
-  thresold <- quantile(as.vector(corTld), probs = c(1 - 1/500));
+  threshold <- quantile(as.vector(corTld), probs = pv);
+  return(threshold)
 }
 
 
