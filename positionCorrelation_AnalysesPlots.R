@@ -46,7 +46,7 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
     geneExPr <- geMat[i,];
     genename <- rownames(geneExPr);
     geneIndex <- which(geneCoords == geneCoords[[geneName]]);
-    # Check the positioning og the gene index and generate the neighbourhood.
+    # Check the positioning of the gene index and generate the neighbourhood.
     if ( geneIndex + n <= noGenes & geneIndex - n >= 1 ) {
       neighCoords <- c(seq(geneIndex - n , n), seq(geneIndex + 1, n));
     }
