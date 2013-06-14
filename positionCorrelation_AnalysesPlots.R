@@ -32,25 +32,26 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
   gpp <- gp[[2]];
   names(gpp) <- gp[[1]];
   # Keep only the genes for which we have expression profiles from the gene expression matrix.
-  genePos <- gpp[rownames(ge)];
-  noGenes <- length(genePos);  
+  genePos <- sort(gpp[rownames(ge)]);
+  noGenes <- length(genePos);
   # Transform the position to circular coordinates (if is asked).
   if ( method == "3D" ) {
     geneCoords <- modulo_coordinates(genePos, per);
   }
   else if ( method == "1D" ) {
-    geneCoords <- sort(genePos);
+    geneCoords <- genePos;
   }
+  lastGeneCoord <- tail(geneCoords, n = 1);
   # Calculating correlations.
   for ( i in 1:nrow(geMat) ) {
     geneExPr <- geMat[i,];
     genename <- rownames(geneExPr);
     geneIndex <- which(geneCoords == geneCoords[[geneName]]);
     # Check the positioning of the gene index and generate the neighbourhood.
-    if ( geneIndex + n <= noGenes & geneIndex - n >= 1 ) {
-      neighCoords <- c(seq(geneIndex - n , n), seq(geneIndex + 1, n));
+    if ( geneCoords[geneIndex + n] <=  & geneIndex - n >= 1 ) {
+      neighCoords <- c(seq(geneIndex - n , length = n), seq(geneIndex + 1, length = n));
     }
-    else if () {
+    else if ( geneIndex + n > noGenes & geneIndex - n >= 1 ) {
     }
     else if () {
     }
@@ -100,7 +101,7 @@ correlation =  rowSums(cor.matrix)-1
 
 # test by 1-D
 par(mfrow=c(1,1))
-for(i in 1:m) {  
+for(i in 1:m) {
 chri = subset(res, res[,2]==paste("chr",i,sep=""))
 print(unique(chri[,2]))
 pos = chri[,3]
@@ -110,7 +111,7 @@ abline(h=thresold, col="red")
 
 # test by 3-D
 par(mfrow=c(1,1))
-for(i in 1:m) {  
+for(i in 1:m) {
   chri = subset(res, res[,2]==paste("chr",i,sep=""))
   print(unique(chri[,2]))
   pos = chri[,4]
