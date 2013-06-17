@@ -26,6 +26,8 @@ modulo_coordinates <- function(pos, per, ...) {
 
 neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = c("spearman", "pearson", "kendall")[1], method = c("1D" ,"3D")[1], per = FALSE, geneList = FALSE, cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
+  neiCorr <- vector();
+  geneNames <- vector();
   # Read files and generate the data structures.
   geMat <- read.table(expressionMatrix, header = TRUE);
   gp <- read.table(genePositions);
@@ -35,7 +37,7 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
   genePos <- sort(gpp[rownames(ge)]);
   noGenes <- length(genePos);
   # Transform the position to circular coordinates (if is asked).
-  if ( method == "3D" ) {
+  if ( method == "3D" & per) {
     geneCoords <- modulo_coordinates(genePos, per);
   }
   else if ( method == "1D" ) {
@@ -45,18 +47,30 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
   # Calculating correlations.
   for ( i in 1:nrow(geMat) ) {
     geneExPr <- geMat[i,];
-    genename <- rownames(geneExPr);
-    geneIndex <- which(geneCoords == geneCoords[[geneName]]);
+    geneName <- rownames(geneExPr);
+    # Checks the existence of the geneName...
+    if ( geneName %in% names(geneCoords) ) {
+      geneIndex <- which(geneCoords == geneCoords[[geneName]])[1]; # TODO fix this with the use of match.
+    }
+    else {next}
+    print(geneIndex)
     # Check the positioning of the gene index and generate the neighbourhood.
-    if ( geneCoords[geneIndex + n] <=  & geneIndex - n >= 1 ) {
-      neighCoords <- c(seq(geneIndex - n , length = n), seq(geneIndex + 1, length = n));
+    if ( geneIndex + n <= noGenes & geneIndex - n >= 0 ) {
+      neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = n));
     }
-    else if ( geneIndex + n > noGenes & geneIndex - n >= 1 ) {
+    else if ( geneIndex + n > noGenes & geneIndex - n >= 0 ) {
+      neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = noGenes - geneIndex), seq(1, length = n - (noGenes - geneIndex)));
     }
-    else if () {
+    else if ( geneIndex + n <= noGenes & geneIndex - n < 0 ) {
+      neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n + geneIndex), length = n - geneIndex), seq(geneIndex + 1, length = noGenes - geneIndex));
     }
+    avgExprProf <- colMeans(geMat[neighCoords,]);
+    corr <- cor(colMeans(geneExPr), avgExprProf, method = cc, ...);
+    neiCorr <- append(neiCorr, corr);
+    geneNames <- append(geneNames, geneName);
   }
-
+  names(neiCorr) <- geneNames;
+  return(neiCorr)
 }
 
 
