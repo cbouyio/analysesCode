@@ -184,11 +184,18 @@ clusterPairsCooccurence <- function(dff, ...) {
 # Return the max of cluster co-occurance foreach interaction site.
   clustContact <- vector();
   for ( r in rownames(dff) ) {
-    coocc <- max(dff[r,], t(dff)[r,]);
+    coocc <- max(dff[r,], t(dff)[,r]);
     clustContact <- append(clustContact, coocc);
   }
   names(clustContact) <- rownames(dff);
   return(clustContact)
+}
+
+
+clusterSiteSpecificity <- function(dff, ...) {
+# Return the average of easch line of the matrix dff.
+  n <- length(dff);
+  for ( r in )
 }
 
 

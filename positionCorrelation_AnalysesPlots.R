@@ -1,5 +1,6 @@
 # Functions and commands to analyse the Palson data under the hypothesis that gene expression profiles are periodically organised.
 
+
 find_gene_name <- function(lst, affProb, ...) {
 # Return the common gene name of an Affymetrix probe name.
   nm <- vector();
@@ -14,17 +15,19 @@ find_gene_name <- function(lst, affProb, ...) {
 }
 
 
+
 modulo_coordinates <- function(pos, per, ...) {
 # Return the modulo coordinates of a list of coordinates.
   if ( per == FALSE ) {
     stop("For the 3D correlation a period must be specified.")
   }
   modCoords <- pos - pos%/%per * per;
-  return(sort(modCoords))
+  return(modCoords)
 }
 
 
-neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = c("spearman", "pearson", "kendall")[1], method = c("1D" ,"3D")[1], per = FALSE, geneList = FALSE, cyclic = TRUE, ...) {
+
+neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = c("spearman", "pearson", "kendall")[1], per = FALSE, geneList = FALSE, cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
   neiCorr <- vector();
   geneNames <- vector();
@@ -34,26 +37,24 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
   gpp <- gp[[2]];
   names(gpp) <- gp[[1]];
   # Keep only the genes for which we have expression profiles from the gene expression matrix.
-  genePos <- sort(gpp[rownames(ge)]);
+  genePos <- sort(gpp[rownames(geMat)]);
   noGenes <- length(genePos);
   # Transform the position to circular coordinates (if is asked).
-  if ( method == "3D" & per) {
-    geneCoords <- modulo_coordinates(genePos, per);
+  if ( per ) {
+    geneCoords <- sort(modulo_coordinates(genePos, per));
   }
-  else if ( method == "1D" ) {
+  else {
     geneCoords <- genePos;
   }
-  lastGeneCoord <- tail(geneCoords, n = 1);
   # Calculating correlations.
   for ( i in 1:nrow(geMat) ) {
     geneExPr <- geMat[i,];
-    geneName <- rownames(geneExPr);
+    geneName <- rownames(geneExPr)[1];
     # Checks the existence of the geneName...
     if ( geneName %in% names(geneCoords) ) {
       geneIndex <- which(geneCoords == geneCoords[[geneName]])[1]; # TODO fix this with the use of match.
     }
     else {next}
-    print(geneIndex)
     # Check the positioning of the gene index and generate the neighbourhood.
     if ( geneIndex + n <= noGenes & geneIndex - n >= 0 ) {
       neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = n));
@@ -62,16 +63,20 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
       neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = noGenes - geneIndex), seq(1, length = n - (noGenes - geneIndex)));
     }
     else if ( geneIndex + n <= noGenes & geneIndex - n < 0 ) {
-      neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n + geneIndex), length = n - geneIndex), seq(geneIndex + 1, length = noGenes - geneIndex));
+      neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n - geneIndex + 1), length = n - geneIndex + 1), seq(geneIndex + 1, length = n));
     }
+    print(neighCoords);
+    print(geMat[neighCoords,]);
+    print(geneCoords[neighCoords])
+    stop("aaa");
     avgExprProf <- colMeans(geMat[neighCoords,]);
     corr <- cor(colMeans(geneExPr), avgExprProf, method = cc, ...);
     neiCorr <- append(neiCorr, corr);
     geneNames <- append(geneNames, geneName);
   }
-  names(neiCorr) <- geneNames;
-  return(neiCorr)
+  return(list(corr = neiCorr, pos = geneCoords))
 }
+
 
 
 bootstrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, pv = 0.02, ...) {
@@ -90,46 +95,5 @@ bootstrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, pv = 0.02,
   }
   threshold <- quantile(as.vector(corTld), probs = pv);
   return(threshold)
-}
-
-
-# test
-#data <- read.table("/Users/samanhasan/Desktop/gpr/1gpr(work)/TExpressionPL.txt")
-Pos<- read.table("/Users/samanhasan/Desktop/gpr/1gpr(work)/TPOsitionPL.txt", header=T)
-
-# Modulus
-per <- 300295
-Modulus  <-  Pos[,3] - (Pos[,3]%/%per * per);
-res <-  cbind(Pos,Modulus);
-
-### Score I: Spearman correlation value
-# to obtain threshold
-n=10
-m=14
-
-# correlation of real data
-cor.tot <- cor(t(data), method="spearman")
-cor.matrix = matrix(0, ncol=2*n+1, nrow=nbgene-2*n)
-for(i in 1:(nbgene-2*n) ) cor.matrix[i,] <- cor.tot[i+n, i:(i+2*n)]
-correlation =  rowSums(cor.matrix)-1
-
-# test by 1-D
-par(mfrow=c(1,1))
-for(i in 1:m) {
-chri = subset(res, res[,2]==paste("chr",i,sep=""))
-print(unique(chri[,2]))
-pos = chri[,3]
-plot(pos[(n+1):(nbgene-n)], correlation,main=paste("Chromosome",i,sep=""), ylim=c(-20,20),xlab="Genes position", ylab="TC Score", type="p",col="red")
-abline(h=thresold, col="red")
-}
-
-# test by 3-D
-par(mfrow=c(1,1))
-for(i in 1:m) {
-  chri = subset(res, res[,2]==paste("chr",i,sep=""))
-  print(unique(chri[,2]))
-  pos = chri[,4]
-  plot(pos[(n+1):(nbgene-n)], correlation,main=paste("Chromosome",i,sep=""), ylim=c(-20,20),xlab="Genes position", ylab="TC Score", type="p",col="red")
-  abline(h=thresold, col="red")
 }
 
