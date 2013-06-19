@@ -194,8 +194,8 @@ clusterPairsCooccurence <- function(dff, ...) {
 
 clusterSiteSpecificity <- function(dff, ...) {
 # Return the average of easch line of the matrix dff.
-  n <- length(dff);
-  for ( r in )
+#  n <- length(dff);
+#  for ( r in )
 }
 
 

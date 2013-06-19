@@ -65,14 +65,19 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
     else if ( geneIndex + n <= noGenes & geneIndex - n < 0 ) {
       neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n - geneIndex + 1), length = n - geneIndex + 1), seq(geneIndex + 1, length = n));
     }
-    print(neighCoords);
-    print(geMat[neighCoords,]);
-    print(geneCoords[neighCoords])
-    stop("aaa");
     avgExprProf <- colMeans(geMat[neighCoords,]);
     corr <- cor(colMeans(geneExPr), avgExprProf, method = cc, ...);
     neiCorr <- append(neiCorr, corr);
     geneNames <- append(geneNames, geneName);
+  }
+  names(neiCorr) <- geneNames;
+  neiCorr <- neiCorr[names(geneCoords)];
+  # Whather a specific list of genes is asked to be ploted.
+  if ( geneList != FALSE ) {
+    geneL <- read.table(geneList)[[1]];
+    geneNamesL <- intersect(geneNames, geneL);
+    geneCoords <- geneCoords[geneNamesL];
+    neiCorr <- neiCorr[names(geneCoords)];
   }
   return(list(corr = neiCorr, pos = geneCoords))
 }
