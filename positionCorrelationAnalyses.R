@@ -65,7 +65,10 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
     else if ( geneIndex + n <= noGenes & geneIndex - n < 0 ) {
       neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n - geneIndex + 1), length = n - geneIndex + 1), seq(geneIndex + 1, length = n));
     }
-    avgExprProf <- colMeans(geMat[neighCoords,]);
+    m <- geMat[neighCoords,]
+    print(geneName)
+    return(m)
+    sumExprProf <- colMeans(geMat[neighCoords,]);
     corr <- cor(colMeans(geneExPr), avgExprProf, method = cc, ...);
     neiCorr <- append(neiCorr, corr);
     geneNames <- append(geneNames, geneName);
@@ -84,9 +87,10 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
 
 
 
-bootstrap_data <- function(expressionMatrix, bootTimes = 100, n = 10, pv = 0.02, ...) {
+bootstrap_data <- function(expressionProfiles, bootTimes = 100, n = 10, pv = 0.02, ...) {
 # Do bootstraping of the data to obtain a significant spearman correlation threshold.
-  noGenes <- dim(expressionMatrix)[1];
+  geMat <- read.table(expressionMatrix, header = TRUE);
+  noGenes <- nrows(geMat);
   corTld  <- NULL;
   for ( i in 1:bootTimes ) {
     randomOrder <- sample(1:noGenes, noGenes, replace = FALSE);
