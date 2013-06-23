@@ -19,7 +19,7 @@ find_gene_name <- function(lst, affProb, ...) {
 modulo_coordinates <- function(pos, per, ...) {
 # Return the modulo coordinates of a list of coordinates.
   if ( per == FALSE ) {
-    stop("For the 3D correlation a period must be specified.")
+    stop("For the solenoid coordinates a period must be specified.")
   }
   modCoords <- pos - pos%/%per * per;
   return(modCoords)
@@ -27,7 +27,7 @@ modulo_coordinates <- function(pos, per, ...) {
 
 
 
-neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = c("spearman", "pearson", "kendall")[1], per = FALSE, geneList = FALSE, cyclic = TRUE, ...) {
+neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, geneList = FALSE, n = 10, cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
   neiCorr <- vector();
   geneNames <- vector();
@@ -52,27 +52,28 @@ neighbour_correlation <- function(expressionMatrix, genePositions, n = 10, cc = 
     geneName <- rownames(geneExPr)[1];
     # Checks the existence of the geneName...
     if ( geneName %in% names(geneCoords) ) {
-      geneIndex <- which(geneCoords == geneCoords[[geneName]])[1]; # TODO fix this with the use of match.
+      geneIndex <- which(geneCoords == geneCoords[[geneName]])[1];
     }
     else {next}
     # Check the positioning of the gene index and generate the neighbourhood.
-    if ( geneIndex + n <= noGenes & geneIndex - n >= 0 ) {
+    if ( geneIndex + n <= noGenes & geneIndex - n > 0 ) {
       neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = n));
     }
-    else if ( geneIndex + n > noGenes & geneIndex - n >= 0 ) {
+    else if ( geneIndex + n > noGenes & geneIndex - n > 0 ) {
       neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = noGenes - geneIndex), seq(1, length = n - (noGenes - geneIndex)));
     }
-    else if ( geneIndex + n <= noGenes & geneIndex - n < 0 ) {
-      neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n - geneIndex + 1), length = n - geneIndex + 1), seq(geneIndex + 1, length = n));
+    else if ( geneIndex + n < noGenes & geneIndex - n <= 0 ) {
+      neighCoords <- c(seq(1, length = geneIndex - 1), seq(noGenes - (n - geneIndex), length = n - geneIndex + 1), seq(geneIndex + 1, length = n));
     }
-    m <- geMat[neighCoords,]
-    print(geneName)
-    return(m)
-    sumExprProf <- colMeans(geMat[neighCoords,]);
-    corr <- cor(colMeans(geneExPr), avgExprProf, method = cc, ...);
+    # Collect the names of the neighbouring genes.
+    neiNames <- names(geneCoords[neighCoords]);
+    # Get the gene expression profiles of neighbouring genes.
+    neiExprM <- geMat[neiNames,];
+    corr <- sum(cor(t(rbind(neiExprM, geneExPr)), method = cc)[geneName,]) - 1 ;
     neiCorr <- append(neiCorr, corr);
     geneNames <- append(geneNames, geneName);
   }
+  # Assigne the names.
   names(neiCorr) <- geneNames;
   neiCorr <- neiCorr[names(geneCoords)];
   # Whather a specific list of genes is asked to be ploted.
