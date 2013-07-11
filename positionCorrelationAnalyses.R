@@ -1,6 +1,14 @@
 # Functions and commands to analyse the Palson data under the hypothesis that gene expression profiles are periodically organised.
 
 
+# Load the required packages.
+library(fMultivar);
+library(boot);
+library(ggplot2);
+library(diptest);
+
+## Functions.
+
 find_gene_name <- function(lst, affProb, ...) {
 # Return the common gene name of an Affymetrix probe name.
   nm <- vector();
@@ -27,7 +35,7 @@ modulo_coordinates <- function(pos, per, ...) {
 
 
 
-neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, geneList = FALSE, n = 10, cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
+neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, n = 10, cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
   neiCorr <- vector();
   geneNames <- vector();
@@ -69,41 +77,79 @@ neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, 
     neiNames <- names(geneCoords[neighCoords]);
     # Get the gene expression profiles of neighbouring genes.
     neiExprM <- geMat[neiNames,];
-    corr <- sum(cor(t(rbind(neiExprM, geneExPr)), method = cc)[geneName,]) - 1 ;
+    corr <- sum(rapply(as.list(data.frame(t(neiExprM))), cor, x=as.double(geneExPr), method = "spearman"));
     neiCorr <- append(neiCorr, corr);
     geneNames <- append(geneNames, geneName);
   }
   # Assigne the names.
   names(neiCorr) <- geneNames;
   neiCorr <- neiCorr[names(geneCoords)];
-  # Whather a specific list of genes is asked to be ploted.
-  if ( geneList != FALSE ) {
-    geneL <- read.table(geneList)[[1]];
-    geneNamesL <- intersect(geneNames, geneL);
-    geneCoords <- geneCoords[geneNamesL];
-    neiCorr <- neiCorr[names(geneCoords)];
-  }
   return(list(corr = neiCorr, pos = geneCoords))
 }
 
 
 
-bootstrap_data <- function(expressionProfiles, bootTimes = 100, n = 10, pv = 0.02, ...) {
+bootstrap_data <- function(expressionProfiles, n, bootTimes = 100, ...) {
 # Do bootstraping of the data to obtain a significant spearman correlation threshold.
-  geMat <- read.table(expressionMatrix, header = TRUE);
-  noGenes <- nrows(geMat);
-  corTld  <- NULL;
+  geMat <- read.table(expressionProfiles, header = TRUE);
+  noGenes <- nrow(geMat);
+  corBoots  <- rep(NA, bootTimes * noGenes);
+  k <- 1;
   for ( i in 1:bootTimes ) {
-    randomOrder <- sample(1:noGenes, noGenes, replace = FALSE);
-    newData <- expressionMatrix[randomOrder, ];
-    corTot <- cor(t(newData), method = "spearman");
-    corMatrix <- matrix(0, ncol = 2*n + 1, nrow = noGenes - 2*n);
-    for( i in 1:(noGenes - 2*n) ) {
-      corMatrix[i, ] <- corTot[i + n, i:(i + 2*n)];
+    for ( j in 1:noGenes ) {
+      geneExpr <- as.double(geMat[j,]);
+      randomSample <- sample(c(1:noGenes)[!c(1:noGenes) == j], n, replace = FALSE);
+      rndExprM <- geMat[randomSample,];
+      corr <- sum(rapply(as.list(data.frame(t(rndExprM))), cor, x = geneExpr, method = "spearman"))
+      corBoots[k] <- corr;
+      k <- k + 1;
     }
-    corTld <- cbind(corTld, rowSums(corMatrix[, -(n + 1)]) - 1);
   }
-  threshold <- quantile(as.vector(corTld), probs = pv);
-  return(threshold)
+  return(corBoots)
+}
+
+
+
+plot_position_correlation <- function(posCorr1D, posCorr3D, btstrp, per, n = "30", pv = 0.001, bins = 35, ...) {
+  # Specify the limits of the y axis.
+  yl <- range(c(posCorr1D$corr, posCorr3D$corr));
+  # Calculate the threshold for the given p-value.
+  thres <- quantile(btstrp, probs = 1 - pv);
+  # Do the plotting, first the 1D scatterplot.
+  par(mfrow = c(2,2), cex.main = 0.8, cex.axis = 0.8, cex.lab = 0.8);
+  plot(posCorr1D$pos, posCorr1D$corr, xlab = "Genome Coordinate", ylab = "Neighbour Correlation", main = sprintf("Position correlations scatterplot (all genes, n = %s)", n), pch = ".", ylim = yl);
+  abline(h = thres);
+#  quartz();
+  # The 3D scatterplot.
+  plot(posCorr3D$pos, posCorr3D$corr, xlab = sprintf("Modulo Coordinate (per = %s)", per), ylab = "Neighbour Correlation", main = sprintf("Position correlations scatterplot (all genes, n = %s)", n), pch = ".", ylim = yl);
+  abline(h = thres);
+#  quartz();
+  # The 1D binned scatterplot.
+  plot(squareBinning(posCorr1D$pos, posCorr1D$corr, bin = bins), addRug=FALSE, col = topo.colors(1, alpha = seq(0, 1, length = 24)), xlab = "Genome Coordinate", ylab = "Neighbour Correlation", main = sprintf("Position correlations bin-plot (all genes, n = %s)", n), ylim = yl);
+  abline(h = thres);
+#  quartz();
+  # The 3D binned scatterplot.
+  plot(squareBinning(posCorr3D$pos, posCorr3D$corr, bin = bins), addRug=FALSE, col = topo.colors(1, alpha = seq(0, 1, length = 24)), xlab = sprintf("Modulo Coordinate (per = %s)", per), ylab = "Neighbour Correlation", main = sprintf("Position correlation bin-plot (all genes, n = %s)", n), ylim = yl);
+  abline(h = thres);
+}
+
+
+
+plot_correlation_densities <- function(posCorr1D, posCorr3D, thres = 0.95, ...) {
+# Plot the density distributions (i.e. histograms of the positional correlations in 1D and 3D.
+  # First generate two factors.
+  ps1d <- data.frame(posCorr = posCorr1D$corr);
+  ps3d <- data.frame(posCorr = posCorr3D$corr);
+  ps1d$coords <- "1D";
+  ps3d$coords <- "3D";
+  # Then combine then in the whole data.
+  posCorrs <- rbind(ps1d, ps3d);
+  # Do the plot.
+  pv <- dip.test(posCorr3D$corr)$p.value;
+  geom_density(kernel = "rectangular");
+  qplot(posCorr, data = posCorrs, geom = "density", fill = coords, alpha = I(0.75), xlab = "Position Correlation", ylab = "Density", main = sprintf("Position Correlation Distributions\nDip test p value: %.2e", pv));
+#  g <- ggplot(posCorr, data = posCorrs, aes(x = posCorr), fill = coords, alpha = I(0.75), xlab = "Position Correlation", ylab = "Density", main = sprintf("Position Correlation Distributions\nDip test p value: %.2e", pv));
+#  g + geom_density(kernel = "rectangular");
+## Attempts to plot with a rectangular kernel.
 }
 
