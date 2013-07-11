@@ -347,14 +347,15 @@ getRatios <- function(dataCollectionPMD, dataCollectionGirth) {
 ## High level functions - Analyse and plot chromosome folding single file data.
 #######################
 
-plotFiber <- function(fileName, lineWidth = 2.5, subtitle = "Demo", op = TRUE, ...) {
+plotFiber <- function(fileName, lineWidth = 3, subtitle = "Demo", op = TRUE, ...) {
 # Baseline 3d plotting function of the fibre.
   if (op == TRUE) {
     open3d(windowRect = c(windowRect = c(0, 0, 800, 800)));
   }
   df <- getCoordinatesData(fileName);
   mcStep <- as.numeric(str_extract(fileName, "[0-9]{11}"));
-  plot3d(df, type = "l", lwd = lineWidth, xlab = "x or 1", ylab = "y or 2", zlab = "z or 3", box = FALSE, top = TRUE, main = sprintf("MC Step: %s", mcStep), sub = subtitle, cex = 0.75, col = "darkgray", ...);
+  plot3d(df, type = "l", lwd = lineWidth, xlab = "x or 1", ylab = "y or 2", zlab = "z or 3", box = FALSE, top = TRUE, col = "darkgray", ...);
+  title3d(main = sprintf("MC Step: %s", mcStep), sub = subtitle);
 }
 
 
@@ -372,7 +373,7 @@ plotFiberInteractions <- function(directoryName, sizeLine = 2, sizePoint = 5, ..
     fileNameInter <- dir(sprintf("%s/Binding_sites_#%i_ch_0/", directoryName, i), full.names = TRUE);
     dfInter <- getCoordinatesData(fileNameInter);
     points3d(dfInter$rfin.0., dfInter$rfin.1., dfInter$rfin.2., size = sizePoint, col = colours[i], ...);
-    text3d(dfInter$rfin.0. + 10, dfInter$rfin.1. + 10, dfInter$rfin.2. + 10, texts = rownames(dfInter), ...);
+    texts3d(dfInter$rfin.0., dfInter$rfin.1., dfInter$rfin.2., texts = rownames(dfInter), adj = c(-0.1,-0.1), ...);
   }
 }
 
