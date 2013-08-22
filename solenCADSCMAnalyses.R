@@ -1,4 +1,5 @@
-#!/usr/bin/Rscript --vanilla 
+#!/usr/bin/Rscript --vanilla
+
 # An R function for visualising results from the global spectrum program of the SolenCAD suite.
 # Costas Bouyioukos (cbouyio@gmail.com), iSSB, 2013
 
