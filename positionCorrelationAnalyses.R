@@ -6,8 +6,10 @@ library(fMultivar);
 library(boot);
 library(ggplot2);
 library(diptest);
+library(gridExtra);
 
-## Functions.
+
+## Generic Functions.
 
 find_gene_name <- function(lst, affProb, ...) {
 # Return the common gene name of an Affymetrix probe name.
@@ -23,7 +25,6 @@ find_gene_name <- function(lst, affProb, ...) {
 }
 
 
-
 modulo_coordinates <- function(pos, per, ...) {
 # Return the modulo coordinates of a list of coordinates.
   if ( per == FALSE ) {
@@ -34,6 +35,7 @@ modulo_coordinates <- function(pos, per, ...) {
 }
 
 
+## Analysis functions.
 
 neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, n = 10, cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
@@ -109,6 +111,7 @@ bootstrap_data <- function(expressionProfiles, n, bootTimes = 100, ...) {
 }
 
 
+## Visualisation functions.
 
 plot_position_correlation <- function(posCorr1D, posCorr3D, btstrp, per, n = "30", pv = 0.001, bins = 35, ...) {
   # Specify the limits of the y axis.
@@ -135,21 +138,142 @@ plot_position_correlation <- function(posCorr1D, posCorr3D, btstrp, per, n = "30
 
 
 
-plot_correlation_densities <- function(posCorr1D, posCorr3D, thres = 0.95, ...) {
+plot_correlation_densities <- function(posCorr1D, posCorr3D, thres = 0.99, bootData = FALSE, krnl = "epanechnikov", ti = "Position Correlation Densities\n", ...) {
 # Plot the density distributions (i.e. histograms of the positional correlations in 1D and 3D.
   # First generate two factors.
   ps1d <- data.frame(posCorr = posCorr1D$corr);
   ps3d <- data.frame(posCorr = posCorr3D$corr);
-  ps1d$coords <- "1D";
-  ps3d$coords <- "3D";
+  ps1d$coords <- "Genomic";
+  ps3d$coords <- "SCM";
   # Then combine then in the whole data.
   posCorrs <- rbind(ps1d, ps3d);
-  # Do the plot.
+  # Do the dip bimodality test and get the p value.
   pv <- dip.test(posCorr3D$corr)$p.value;
-  geom_density(kernel = "rectangular");
-  qplot(posCorr, data = posCorrs, geom = "density", fill = coords, alpha = I(0.75), xlab = "Position Correlation", ylab = "Density", main = sprintf("Position Correlation Distributions\nDip test p value: %.2e", pv));
-#  g <- ggplot(posCorr, data = posCorrs, aes(x = posCorr), fill = coords, alpha = I(0.75), xlab = "Position Correlation", ylab = "Density", main = sprintf("Position Correlation Distributions\nDip test p value: %.2e", pv));
-#  g + geom_density(kernel = "rectangular");
-## Attempts to plot with a rectangular kernel.
+  # Plotting part, basic ggplot2
+  g <- ggplot(posCorrs, aes(x = posCorr));
+  # Densities
+  g <- g + geom_density(aes(fill = coords), alpha = 0.75, kernel = krnl, ...);
+  # Plot decorations
+  g <- g + labs(x = "Position Correlation", y = "Density", title = sprintf("%sDip test p value: %.2e", ti, pv)) + guides(fill = guide_legend(title = "Coord")) + theme(legend.justification = c(1,1), legend.position = c(1,1));
+  # Make the title red is pv <= thres
+  if ( pv <= (1 - thres) ) {
+    g <- g + theme(plot.title = element_text(colour = "red3"));
+  }
+  # Plot the bootstrap threshold.
+  if ( ! identical(bootData, FALSE) ) {
+    cutt <- quantile(bootData, probs = thres);
+    return(g + geom_vline(xintercept = cutt, col = "red"))
+  }
+  else {
+    return(g)
+  }
+  # Brilliant ggplot can return a plot object too!!!, if it is not assigned then it will plot it automatically.
+}
+
+
+
+## Multiscale analysis functions.
+
+## (multiscale analysis entails the analysis of the positional correlation on many different steps that correspond to different sizes of the neighbourhood for correlation (parameter n).
+
+run_bootstrap <- function(exPr, outfileName, nTimes = c(5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100), ...) {
+# Run the bootstrap as many times as specified in the "times" list of the number of neighbours.
+  bdf <- data.frame();
+  for ( i in nTimes ) {
+    bs <- bootstrap_data(exPr, i, ...);
+    if ( ncol(bdf) != 0 ) {
+      bdf[[sprintf("n%s", i)]] <- bs;
+    }
+    else {
+      bdf <- data.frame(bs);
+      colnames(bdf) <- sprintf("n%s", i);
+    }
+  }
+  zz <- file(outfileName, "w");
+  write.table(bdf, zz);
+  close(zz);
+}
+
+
+multi_pos_correlation <- function(exPr, genePos, per, outfileName,  nTimes = c(5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100), ...) {
+# Run the position correlation calculations over many different gene neigoubourhoods (as specified by the "nTimes" param.) for a given period.
+  # Initialise the data frames.
+  posCorDF1D <- data.frame();
+  posCorDF3D <- data.frame();
+
+  # Set up a nested function (that does most of the job actually and avoids code duplication).
+  posCorr2DF <- function(exPr, genePos, per, n, posCordf, ...) {
+  # Internal function to put the positional correlations in a data frame.
+    posCor <- neighbour_correlation(exPr, genePos, per, n, ...);
+    if ( ncol(posCordf) != 0 ) {
+      posCordf[[sprintf("n%s", i)]] <- posCor$corr;
+    }
+    else {
+      # The first column of the data frame will be the gene positions.
+      posCordf <- data.frame(posCor$pos);
+      colnames(posCordf) <- "pos";
+      # Then start populating with the positional correlation score.
+      posCordf[[sprintf("n%s", i)]] <- posCor$corr;
+    }
+    return(posCordf)
+  }
+
+  # Loop through nsi
+  for ( i in nTimes ) {
+    posCorDF1D <- posCorr2DF(exPr, genePos, per = FALSE, n = i, posCordf = posCorDF1D, ...);
+    posCorDF3D <- posCorr2DF(exPr, genePos, per = per, n = i, posCordf = posCorDF3D, ...);
+  }
+  zz1 <- file(sprintf("%s_p%s_1D.out", outfileName, per), "w");
+  zz2 <- file(sprintf("%s_p%s_3D.out", outfileName, per), "w");
+  write.table(posCorDF1D, zz1);
+  write.table(posCorDF3D, zz2);
+  close(zz1);
+  close(zz2);
+}
+
+
+plot_mulitscale_experiment <- function(posCorr1D_File, posCorr3D_File, bootstrap_File, per, thres = 0.99, ...) {
+# Function to create plots out of the results of a multiscale experiment.
+
+  # Nested function to create layouts
+  vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y);
+
+  # Some tricks in the read to make reading faster.
+  posCorr1D <- read.table(posCorr1D_File, header = TRUE, sep = " ", comment.char = "", stringsAsFactors = FALSE);
+  posCorr3D <- read.table(posCorr3D_File, header = TRUE, sep = " ", comment.char = "", stringsAsFactors = FALSE);
+  bootData <- read.table(bootstrap_File, header = TRUE, sep = " ", comment.char = "", stringsAsFactors = FALSE, nrows = 297101, colClasses = c("character", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric", "numeric"));
+  # Reads REALLY fast, however it might be subject to changes, so the old way is kept above.
+#  bootData <- fread(bootstrap_File, header = TRUE, autostart = 1)
+  # Calculate the best gridding.
+  nn <- length(colnames(bootData));
+  nc <- ceiling(sqrt(nn));
+  if ( nn - floor(sqrt(nn))*ceiling(sqrt(nn)) <= 0 ) {
+    nr <- floor(sqrt(nn));
+  }
+  else {
+    nr <- ceiling(sqrt(nn));
+  }
+  # Set the grid.
+  pushViewport(viewport(layout = grid.layout(nr, nc)))
+  # bootData is the only data frame where the columns contain ONLY the different neighbouring sweeps. The other two contain a column for the gene positions as well.
+  for ( i in 1:length(colnames(bootData)) ) {
+    pc1d <- list();
+    pc3d <- list();
+    n <- colnames(bootData)[i];
+    bd <- bootData[[n]];
+    pc1d[["corr"]] <- posCorr1D[[n]];
+    pc3d[["corr"]] <- posCorr3D[[n]];
+    pp <- plot_correlation_densities(pc1d, pc3d, thres, bd, ti = sprintf("Neighbours %s, Period %s\n", n, per), ...);
+    # Derive the plot coordinates.
+    if ( i%%nc != 0 ) {
+      k <- i%/%nc + 1; # The quotient of the division with ncols.
+      l <- i%%nc; # The remainder of the division by the ncols.
+    }
+    else {
+      k <- i%/%nc;
+      l <- nc;
+    }
+    print(pp, vp = vplayout(k, l));
+  }
 }
 
