@@ -13,6 +13,8 @@ library("ggplot2");
 ## Low level functions - Access, store and basic calculations on folding data.
 ########################
 
+# Read data from singular files as well as collections (directories etc.).
+
 getCoordinatesData <- function(fileName) {
 # Return data as a frame with the 3D coordinates of the end-points of each cylinder.
 # The cylinder number becomes the row name in the DF, and will be used to identify the point.
@@ -24,217 +26,6 @@ getCoordinatesData <- function(fileName) {
   }
   coordsDF <- data.frame(d[2:4], row.names = rn);
   return(coordsDF)
-}
-
-
-dbscanClustering <- function(dframe, e = 90, cp = 2, ...) {
-# Return named cluster vector showing the cluster assignment of each data point.
-# Row names in a properly read dframe should correspond to the number of the cylinder that an interaction site is positioned.
-  dbcl <- dbscan(dframe, eps = e, MinPts = cp, ...);
-  clusterVector <- dbcl$cluster;
-  centres <- double();
-  labels <- list();
-  for (i in unique(clusterVector)) {
-    clusterCentre <- colMeans(dframe[clusterVector == i, ]);
-    centres <- rbind(centres, clusterCentre);
-    # TODO the labels list....
-  }
-  names(clusterVector) <- rownames(dframe);
-  centresWeighted <- centres %*% abs(princomp(scale(dframe))$loadings[,1]);
-  return(list(clusters = clusterVector, centres = centres, weighted.centres = centresWeighted))
-}
-
-
-withinClusterSS <- function(dframe, ... ) {
-# Return the intra-cluster sum of square distances out of a data frame of cluster points.
-  centroid <- colMeans(dframe);            # The centroid of the cluster
-  dtCent <- rbind(dframe, centroid);       # A DF with the points as well as the centroid coordinates
-  dists <- as.matrix(dist(dtCent));        # The distance matrix of the above DF
-  clustDist <- sum(dists[nrow(dists), ] ** 2); # The mean of the last line of the distance matrix is the mean distance of the cluster points from the centroid
-  return(clustDist)
-}
-
-
-clusterDistanceFamilies <- function(dirName, fileIndex = 1) {
-# fileIndex : An integer specifying the file that needs to be retrieved from each sorted file list
-#             of a directory.
-# Return a vector of all the mean euclidean distances of cluster points from the centroid for clusters of the same family.
-  clustDistList <- double();
-  for (dr in dir(path = dirName, pattern = "Binding_sites#*", full.names = TRUE)) {
-    fileName <- dir(dr, full.names = TRUE)[fileIndex];
-    dfm <- getCoordinatesData(fileName);
-    clustDist <- clusterDistanceDF(dfm);
-    clustDistList <- append(clustDistList, clustDist);
-    }
-  return(clustDistList);
-}
-
-
-clustDistDiff <- function(dirName1, dirName2, fileIndex = 1) {
-# Return the distance between two different cluster distance vectors.
-# (This measure is a proxy of the degree of "clustering" between two different "clusterings")
-  cl1 <- clusterDistance(dirName1, fileIndex);
-  cl2 <- clusterDistance(dirName2, fileIndex);
-  return(dist(rbind(cl1, cl2)))
-}
-
-
-sphericalVolume <- function(dframe, ...) {
-# Return the volume of a sphere with diameter the distance between the two more distant point in the data frame.
-  maxDistance <- max(dist(dframe));
-  return( (pi*((maxDistance / 1000)^3)) / 6.0)
-}
-
-
-cloudPointDensity <- function(dframe, ...) {
-# Return a proxy measure of the density of a cloud of points.
-  v <- sphericalVolume(dframe);
-  p <- nrow(dframe);
-  return(p / v)
-}
-
-
-intraClusterSS <- function(coordsFile, e = 90, cp = 2, ...) {
-# Return a vector (of length equal to the number of clusters) of the intra-cluster sum of squares of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
-  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
-  noClusters <- max(range(clusterVector));
-  clusterDists <- vector();
-  for (i in seq(noClusters)) {
-    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
-    icSS <- withinClusterSS(dfCluster);
-    clusterDists <- append(clusterDists, icSS);
-  }
-  names(clusterDists) <- sprintf("Cluster-%i", seq(noClusters));
-  return(clusterDists)
-}
-
-
-intraClusterDensity <- function(coordsFile, e = 90, cp = 2, ...) {
-# Return a vector (of length equal to the number of clusters) of the density of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
-  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
-  noClusters <- max(range(clusterVector));
-  clusterDens <- vector();
-  for (i in seq(noClusters)) {
-    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
-    icd <- cloudPointDensity(dfCluster);
-    clusterDens <- append(clusterDens, icd);
-  }
-  names(clusterDens) <- sprintf("Cluster-%i", seq(noClusters));
-  return(clusterDens)
-}
-
-
-intraClusterMPD <- function(coordsFile, e = 90, cp = 2, ...) {
-# Return a vector (of length equal to the number of clusters) of the MPD of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
-  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
-  noClusters <- max(range(clusterVector));
-  clusterMPD <- vector();
-  for (i in seq(noClusters)) {
-    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
-    icd <- mean(dist(dfCluster));
-    clusterMPD <- append(clusterMPD, icd);
-  }
-  names(clusterMPD) <- sprintf("Cluster-%i", seq(noClusters));
-  return(clusterMPD)
-}
-# TODO actually the three function above is a code duplication and they should be merged to one generic function with two different function callers.
-
-
-jaccardIndex <- function(labelsA, labelsB, ...) {
-# Return the Jaccard similarity index between two sets.
-  u <- union(labelsA, labelsB);
-  i <- intersect(labelsA, labelsB);
-  return(i/u) # The Jaccard similarity index
-}
-
-
-clusterPairsFreqs <- function(dirList) {
-# Return a matrix (data frame) of the contacts coocurence.
-  # Firstly  generate a zero dfm with the appropriate names.
-  dd <- getCoordinatesData(dir(sprintf("%s/Binding_sites_#1_ch_0", dirList[1]), full.names = TRUE)[1]);
-  xx <- replicate(length(rownames(dd)), rep(0, length(rownames(dd))));
-  dff <- data.frame(xx , row.names = rownames(dd));
-  names(dff) <- rownames(dd);
-  # The actual calculation.
-  for ( dr in dirList ) {
-    directory <- sprintf("%s/Binding_sites_#1_ch_0", dr);
-    fileName <- dir(directory, full.names = TRUE)[1];
-    dfm <- getCoordinatesData(fileName);
-    clust <- dbscanClustering(dfm)$clusters;
-    for ( i in 1:length(clust) ) {
-      ni <- names(clust[i]);
-      for ( j in i:length(clust) ) {
-        nj <- names(clust[j]);
-        if ( i != j && clust[i] == clust[j] ) {
-          dff[ni, ][[nj]] <- dff[ni, ][[nj]] + 1;
-        }
-      }
-    }
-  }
-  # Divide with the number of experiments to get the frequency.
-  ne <- length(dirList);
-  return(dff / ne)
-}
-
-
-clusterPairsCooccurence <- function(dff, ...) {
-# Return the max of cluster co-occurance foreach interaction site.
-  clustContact <- vector();
-  for ( r in rownames(dff) ) {
-    coocc <- max(dff[r,], t(dff)[,r]);
-    clustContact <- append(clustContact, coocc);
-  }
-  names(clustContact) <- rownames(dff);
-  return(clustContact)
-}
-
-
-clusterSiteSpecificity <- function(dff, ...) {
-# Return the average of easch line of the matrix dff.
-#  n <- length(dff);
-#  for ( r in )
-}
-
-
-contactFreqs <- function(dirList, thresDist = 90, ...) { # Threshold distance in nanometers.
-# Return a contact frequency matrix.
-  # Firstly generate a zero dfm with the appropriate names.
-  dd <- getCoordinatesData(dir(sprintf("%s/Coordonnees_ADN_ch_0", dirList[1]), full.names = TRUE)[1]);
-  xx <- replicate(length(rownames(dd)), rep(0, length(rownames(dd))));
-  cfm <- data.frame(xx , row.names = rownames(dd));
-  names(cfm) <- rownames(dd);
-  # Calculate the contact frequencies for cylinders that are under the defined distance (thresDist).
-  for ( dr in dirList ) {
-    directory <- sprintf("%s/Coordonnees_ADN_ch_0", dr);
-    fileName <- dir(directory, full.names = TRUE)[1];
-    dfm <- getCoordinatesData(fileName);
-    for ( r in 1:nrow(dfm) ) {
-      rw <- dfm[r,];
-    }
-  }
-  ne = length(dirList);  
-  return(cfm / ne)
-}
-
-
-meanPairwiseDist <- function(fileName) {
-# Return the mean pairwise distance between all the points in a single binding file.
-  df <- getCoordinatesData(fileName);
-  meanDist <- mean(dist(df));
-  return(meanDist)
-}
-
-
-gyrationRadius <- function(fileName) {
-# Return the radius of gyration (formula taken -but adapted- from wikipedia article on radius of gyration).
-  df <- getCoordinatesData(fileName);
-  n <- nrow(df);
-  sumSq <- sum(dist(df)**2);
-  gyration <- sqrt(sumSq/((n**2)));
-  return(gyration)
 }
 
 
@@ -260,7 +51,7 @@ getMultipleData <- function(dirList, funct, type) {
   }
   # Get the calculated data.
   for (dr in dirList) {
-    directory <- sprintf("%s%s", dr, suff);
+    directory <- sprintf("%s/%s", dr, suff);
     fl <- dir(directory, full.names = TRUE)[1];
     dfm <- append(dfm, calculateData(fl));
   }
@@ -342,6 +133,153 @@ getRatios <- function(dataCollectionPMD, dataCollectionGirth) {
 }
 
 
+# Low level clustering functions.
+
+dbscanClustering <- function(dframe, e = 90, cp = 2, ...) {
+# Return named cluster vector showing the cluster assignment of each data point.
+# Row names in a properly read dframe should correspond to the number of the cylinder that an interaction site is positioned.
+  dbcl <- dbscan(dframe, eps = e, MinPts = cp, ...);
+  clusterVector <- dbcl$cluster;
+  centres <- double();
+  labels <- list();
+  for (i in unique(clusterVector)) {
+    clusterCentre <- colMeans(dframe[clusterVector == i, ]);
+    centres <- rbind(centres, clusterCentre);
+    # TODO the labels list....
+  }
+  names(clusterVector) <- rownames(dframe);
+  centresWeighted <- centres %*% abs(princomp(scale(dframe))$loadings[,1]);
+  return(list(clusters = clusterVector, centres = centres, weighted.centres = centresWeighted))
+}
+
+
+withinClusterSS <- function(dframe, ... ) {
+# Return the intra-cluster sum of square distances out of a data frame of cluster points.
+  centroid <- colMeans(dframe);            # The centroid of the cluster
+  dtCent <- rbind(dframe, centroid);       # A DF with the points as well as the centroid coordinates
+  dists <- as.matrix(dist(dtCent));        # The distance matrix of the above DF
+  clustDist <- sum(dists[nrow(dists), ] ** 2); # The mean of the last line of the distance matrix is the mean distance of the cluster points from the centroid
+  return(clustDist)
+}
+
+
+clusterDistanceFamilies <- function(dirName, fileIndex = 1) {
+# fileIndex : An integer specifying the file that needs to be retrieved from each sorted file list
+#             of a directory.
+# Return a vector of all the mean euclidean distances of cluster points from the centroid for clusters of the same family.
+  clustDistList <- double();
+  for (dr in dir(path = dirName, pattern = "Binding_sites#*", full.names = TRUE)) {
+    fileName <- dir(dr, full.names = TRUE)[fileIndex];
+    dfm <- getCoordinatesData(fileName);
+    clustDist <- clusterDistanceDF(dfm);
+    clustDistList <- append(clustDistList, clustDist);
+    }
+  return(clustDistList);
+}
+
+
+clustDistDiff <- function(dirName1, dirName2, fileIndex = 1) {
+# Return the distance between two different cluster distance vectors.
+# (This measure is a proxy of the degree of "clustering" between two different "clusterings")
+  cl1 <- clusterDistance(dirName1, fileIndex);
+  cl2 <- clusterDistance(dirName2, fileIndex);
+  return(dist(rbind(cl1, cl2)))
+}
+
+
+intraClusterSS <- function(coordsFile, e = 90, cp = 2, ...) {
+# Return a vector (of length equal to the number of clusters) of the intra-cluster sum of squares of each cluster.
+  dframe <- getCoordinatesData(coordsFile);
+  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
+  noClusters <- max(range(clusterVector));
+  clusterDists <- vector();
+  for (i in seq(noClusters)) {
+    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
+    icSS <- withinClusterSS(dfCluster);
+    clusterDists <- append(clusterDists, icSS);
+  }
+  names(clusterDists) <- sprintf("Cluster-%i", seq(noClusters));
+  return(clusterDists)
+}
+
+
+intraClusterDensity <- function(coordsFile, e = 90, cp = 2, ...) {
+# Return a vector (of length equal to the number of clusters) of the density of each cluster.
+  dframe <- getCoordinatesData(coordsFile);
+  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
+  noClusters <- max(range(clusterVector));
+  clusterDens <- vector();
+  for (i in seq(noClusters)) {
+    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
+    icd <- cloudPointDensity(dfCluster);
+    clusterDens <- append(clusterDens, icd);
+  }
+  names(clusterDens) <- sprintf("Cluster-%i", seq(noClusters));
+  return(clusterDens)
+}
+
+
+intraClusterMPD <- function(coordsFile, e = 90, cp = 2, ...) {
+# Return a vector (of length equal to the number of clusters) of the MPD of each cluster.
+  dframe <- getCoordinatesData(coordsFile);
+  clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
+  noClusters <- max(range(clusterVector));
+  clusterMPD <- vector();
+  for (i in seq(noClusters)) {
+    dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
+    icd <- mean(dist(dfCluster));
+    clusterMPD <- append(clusterMPD, icd);
+  }
+  names(clusterMPD) <- sprintf("Cluster-%i", seq(noClusters));
+  return(clusterMPD)
+}
+# TODO actually the three function above is a code duplication and they should be merged to one generic function with two different function callers.
+
+
+# General purpose functions.
+
+sphericalVolume <- function(dframe, ...) {
+# Return the volume of a sphere with diameter the distance between the two more distant point in the data frame.
+  maxDistance <- max(dist(dframe));
+  return( (pi*((maxDistance / 1000)^3)) / 6.0)
+}
+
+
+cloudPointDensity <- function(dframe, ...) {
+# Return a proxy measure of the density of a cloud of points.
+  v <- sphericalVolume(dframe);
+  p <- nrow(dframe);
+  return(p / v)
+}
+
+
+jaccardIndex <- function(labelsA, labelsB, ...) {
+# Return the Jaccard similarity index between two sets.
+  u <- union(labelsA, labelsB);
+  i <- intersect(labelsA, labelsB);
+  return(i/u) # The Jaccard similarity index
+}
+
+
+meanPairwiseDist <- function(fileName) {
+# Return the mean pairwise distance between all the points in a single binding file.
+  df <- getCoordinatesData(fileName);
+  meanDist <- mean(dist(df));
+  return(meanDist)
+}
+
+
+gyrationRadius <- function(fileName) {
+# Return the radius of gyration (formula taken -but adapted- from wikipedia article on radius of gyration).
+  df <- getCoordinatesData(fileName);
+  n <- nrow(df);
+  sumSq <- sum(dist(df)**2);
+  gyration <- sqrt(sumSq/((n**2)));
+  return(gyration)
+}
+
+
+
 
 #######################
 ## High level functions - Analyse and plot chromosome folding single file data.
@@ -391,8 +329,8 @@ makeBoxplots <- function(outDirListPer, outDirListRnd, funct, type, colours = c(
   }
   perData <- getMultipleData(outDirListPer, funct, type);
   rndData <- getMultipleData(outDirListRnd, funct, type);
-  boxplot(perData, rndData, varwidth = TRUE, notch = TRUE, names = c("Periodic", "Random"), ylab = "Nanometres", main = sprintf("%s Boxplots", label), boxwex = 0.6, col = colours, ...);
-  legend("topright", legend = sprintf("U-test statistic: %.2f\nU-test p value: %.4f", wilcox.test(perData, rndData)$statistic, wilcox.test(perData, rndData)$p.value))
+  boxplot(perData, rndData, varwidth = TRUE, names = c("Periodic", "Random"), ylab = "Nanometres", main = sprintf("%s Boxplots", label), boxwex = 0.6, col = colours, ...);
+  legend("bottomright", legend = sprintf("U-test: %.2f\np value: %.4f", wilcox.test(perData, rndData)$statistic, wilcox.test(perData, rndData)$p.value))
 }
 
 
@@ -409,6 +347,111 @@ plotTraces <- function(directoryName, funct, ...) {
   } 
   dfm <- getTracesData(directoryName, funct);
   plot(dfm$mcSteps, dfm[[funct]], type = 'l', xlab = "MC step", ylab = label, ...);
+}
+
+# Relative to clustering.
+
+clusterPairsFreqs <- function(dirList) {
+# Return a matrix (data frame) of the contacts coocurence.
+  # Firstly  generate a zero dfm with the appropriate names.
+  dd <- getCoordinatesData(dir(sprintf("%s/Binding_sites_#1_ch_0", dirList[2]), full.names = TRUE)[1]);
+  rownames(dd) <- as.character(seq(1, 38)); # REMOVE THIS KLUDGE ASAP.
+  xx <- replicate(length(rownames(dd)), rep(0.0, length(rownames(dd))));
+  dff <- data.frame(xx , row.names = rownames(dd));
+  names(dff) <- rownames(dd);
+  # The actual calculation.
+  for ( dr in dirList ) {
+    directory <- sprintf("%s/Binding_sites_#1_ch_0", dr);
+    fileName <- dir(directory, full.names = TRUE)[1];
+    dfm <- getCoordinatesData(fileName);
+    rownames(dfm) <- as.character(seq(1, length(rownames(dfm)))); # REMOVE THIS KLUDGE ASAP
+    clust <- dbscanClustering(dfm)$clusters;
+    for ( i in 1:length(clust) ) {
+      ni <- names(clust[i]);
+      for ( j in i:length(clust) ) {
+        nj <- names(clust[j]);
+        if ( i != j && clust[i] == clust[j] ) {
+          # Means that the two points belong to the same cluster so increase the frequancy by one.
+          dff[ni, nj] <- dff[ni, nj] + 1 ;
+          # Also populate the diametric cell of the matrix.
+          dff[nj, ni] <- dff[nj, ni] + 1 ;
+        }
+      }
+    }
+  }
+  # Divide with the number of experiments to get the frequency.
+  ne <- length(dirList);
+  freq <- dff / ne;
+  # Report both.
+  return(list(contacts = dff, freqs = freq))
+}
+
+
+clusterPairsCooccurencAVG <- function(dff, ....) {
+# Return the average cluster co-ocurence frequency foraech interaction site.
+  coOccAvg <- vector();
+  for ( r in rownames(dff$freqs) ) {
+    avg <- mean(dff$freqs[r,]);
+    coOccAvg <- append(coOccAvg, avg);
+  }
+  names(coOccAvg) <- rownames(dff$freqs);
+  return(coOccAvg)
+}
+
+
+clusterPairsCooccurenceMax <- function(dff, ...) {
+# Return the maximum cluster co-occurance frequency foreach interaction site.
+  coOccMax <- vector();
+  for ( r in rownames(dff$freqs) ) {
+    co <- max(dff$freqs[r,]);
+    coOccMax <- append(coOccMax, co);
+  }
+  names(coOccMax) <- rownames(dff$freqs);
+  return(coOccMax)
+}
+
+
+clusterSiteSpecificities <- function(dff, ...) {
+# Return a clustering specificity index foreach interaction site. Calculated in two means one with the averages one with the sums.
+  n <- length(dff$freqs);
+  clSpecAVG <- vector();
+  clSpecSUM <- vector();
+  for ( r in rownames(dff$freqs) ) {
+    coMax <- max(dff$freqs[r,]);
+    cM <- which(dff$freqs[r,] == coMax)[1];
+    mRow <- mean(as.numeric(dff$freqs[r,]));
+    mCol <- mean(as.numeric(dff$freqs[,cM]));
+    sRow <- sum(dff$freqs[r,]);
+    sCol <- sum(dff$freqs[,cM]);
+    csA <- (2 * coMax) / (mCol + mRow);
+    csS <- (coMax ** 2) / (sCol + sRow);
+    clSpecAVG <- append(clSpecAVG, csA);
+    clSpecSUM <- append(clSpecSUM, csS);
+  }
+  names(clSpecAVG) <- rownames(dff$freqs);
+  names(clSpecSUM) <- rownames(dff$freqs);
+  return(list(avg=clSpecAVG, sum=clSpecSUM))
+}
+
+
+contactFreqs <- function(dirList, thresDist = 90, ...) { # Threshold distance in nanometers.
+# Return a contact frequency matrix.
+  # Firstly generate a zero dfm with the appropriate names.
+  dd <- getCoordinatesData(dir(sprintf("%s/Coordonnees_ADN_ch_0", dirList[1]), full.names = TRUE)[1]);
+  xx <- replicate(length(rownames(dd)), rep(0, length(rownames(dd))));
+  cfm <- data.frame(xx , row.names = rownames(dd));
+  names(cfm) <- rownames(dd);
+  # Calculate the contact frequencies for cylinders that are under the defined distance (thresDist).
+  for ( dr in dirList ) {
+    directory <- sprintf("%s/Coordonnees_ADN_ch_0", dr);
+    fileName <- dir(directory, full.names = TRUE)[1];
+    dfm <- getCoordinatesData(fileName);
+    for ( r in 1:nrow(dfm) ) {
+      rw <- dfm[r,];
+    }
+  }
+  ne = length(dirList);  
+  return(cfm / ne)
 }
 
 
@@ -492,8 +535,20 @@ plotCollectionTraceRatios <- function(directoryListPer, directoryListRnd, lineW 
 }
 
 
+clustergramPlot <- function(X, Y, noRepeats, x.range, y.range , COL, centresPoints) {
+# Function to actually make the clustergram
+  plot(0,0, col = "white", xlim = x.range, ylim = y.range, axes = F, xlab = "Number of Experiments", ylab = "PCA weighted Centres of the clusters", main = c("Clustergram of the PCA-weighted Centres of clusters", "among experimental repetitions"));
+  axis(side =1, at = noRepeats);
+  axis(side =2);
+  abline(v = 1:noRepeats, col = "grey");
+  matlines(t(X), t(Y), pch = 19, col = COL, lty = 1, lwd = 1.5); 
+  xx <- ldply(centresPoints, rbind);
+  points(xx$y~xx$x, pch = 19, col = "red", cex = 1.1);
+}
+
+
 clustergramDBscan <- function(directoryList, line.width = 0.004) {
-# Plot the clustergram of the DBscan results of many repetitions of each experiment.
+# Manage the ploting the clustergram of the DBscan results of many repetitions of each experiment.
   fileName <- dir(sprintf("%s/Binding_sites_#1_ch_0/", directoryList[1]), full.names = TRUE)[1];
   d1 <- getCoordinatesData(fileName);
   PCA.1 <- as.matrix(d1) %*% princomp(d1)$loadings[,1]; # first principal component of our data
@@ -535,20 +590,6 @@ clustergramDBscan <- function(directoryList, line.width = 0.004) {
 }
 
 
-clustergramPlot <- function(X, Y, noRepeats, x.range, y.range , COL, centresPoints) {
-# Plot the clustergram
-  plot(0,0, col = "white", xlim = x.range, ylim = y.range, axes = F, xlab = "Number of Experiments", ylab = "PCA weighted Centres of the clusters", main = c("Clustergram of the PCA-weighted Centres of clusters", "among experimental repetitions"));
-  axis(side =1, at = noRepeats);
-  axis(side =2);
-  abline(v = 1:noRepeats, col = "grey");
- 
-  matlines(t(X), t(Y), pch = 19, col = COL, lty = 1, lwd = 1.5);
- 
-  xx <- ldply(centresPoints, rbind);
-  points(xx$y~xx$x, pch = 19, col = "red", cex = 1.1);
-}
-
-
 plotClusterCoocurances <- function(contactFreqs, chromLen, molecule = c("circular", "linear")[1], plotType = c("contour", "smooth")[1], ...) {
 # Plot the contact frequencies of all the pairs of interaction sites, between random and regular configurations.
   dst <- vector();
@@ -584,8 +625,8 @@ plotClusterCoocurances <- function(contactFreqs, chromLen, molecule = c("circula
 }
 
 
-plotContactFrequencies <- function() {
-#
+contactFrequenciesMatrix <- function(outDirs, contactRadious, ...) {
+# Function to generate a contact frequencies matrix, equivalent (and thus easy to compare) with the matrices of 3C experiments.
   return(0)
 }
 
