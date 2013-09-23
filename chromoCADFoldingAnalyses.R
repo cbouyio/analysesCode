@@ -7,6 +7,7 @@ library("plyr");
 library("MASS");
 library("RColorBrewer");
 library("ggplot2");
+library("gridExtra");
 
 
 ########################
@@ -187,9 +188,8 @@ clustDistDiff <- function(dirName1, dirName2, fileIndex = 1) {
 }
 
 
-intraClusterSS <- function(coordsFile, e = 90, cp = 2, ...) {
+intraClusterSS <- function(dframe, e = 90, cp = 2, ...) {
 # Return a vector (of length equal to the number of clusters) of the intra-cluster sum of squares of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
   clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
   noClusters <- max(range(clusterVector));
   clusterDists <- vector();
@@ -203,9 +203,8 @@ intraClusterSS <- function(coordsFile, e = 90, cp = 2, ...) {
 }
 
 
-intraClusterDensity <- function(coordsFile, e = 90, cp = 2, ...) {
+intraClusterDensity <- function(dframe, e = 90, cp = 2, ...) {
 # Return a vector (of length equal to the number of clusters) of the density of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
   clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
   noClusters <- max(range(clusterVector));
   clusterDens <- vector();
@@ -219,9 +218,8 @@ intraClusterDensity <- function(coordsFile, e = 90, cp = 2, ...) {
 }
 
 
-intraClusterMPD <- function(coordsFile, e = 90, cp = 2, ...) {
+intraClusterMPD <- function(dframe, e = 90, cp = 2, ...) {
 # Return a vector (of length equal to the number of clusters) of the MPD of each cluster.
-  dframe <- getCoordinatesData(coordsFile);
   clusterVector <- dbscanClustering(dframe, e, cp, ...)$clusters;
   noClusters <- max(range(clusterVector));
   clusterMPD <- vector();
@@ -316,7 +314,7 @@ plotFiberInteractions <- function(directoryName, sizeLine = 2, sizePoint = 5, ..
 }
 
 
-makeBoxplots <- function(outDirListPer, outDirListRnd, funct, type, colours = c("turquoise", "tomato"), ...) {
+plotFibreBoxplots <- function(outDirListPer, outDirListRnd, funct, type, colours = c("turquoise", "tomato"), ...) {
 # Returns two box-plots from two collections of OUT files.
   if (funct == "pmd") {
     label <- "Mean Pairwise Distance"
@@ -334,7 +332,7 @@ makeBoxplots <- function(outDirListPer, outDirListRnd, funct, type, colours = c(
 }
 
 
-plotTraces <- function(directoryName, funct, ...) {
+plotFibreTraces <- function(directoryName, funct, ...) {
 # Plots the simulation traces of either the girth or the pmd, depending on the "funct" call.
   if (funct == "pmd")  {
     label <- "Mean Pairwise Distance"
@@ -349,13 +347,96 @@ plotTraces <- function(directoryName, funct, ...) {
   plot(dfm$mcSteps, dfm[[funct]], type = 'l', xlab = "MC step", ylab = label, ...);
 }
 
-# Relative to clustering.
+
+# Functions relative to the clustering analysis.
+
+clusterNumber <-function(dirList, ...) {
+# Return a vector of the lenght of the dirList with the number of clusters of each experiment.
+  nclusters <- vector();
+  for ( dr in dirList ) {
+    directory <- sprintf("%s/Binding_sites_#1_ch_0", dr);
+    fileName <- dir(directory, full.names = TRUE)[1];
+    dfm <- getCoordinatesData(fileName);
+    nc <- max(dbscanClustering(dfm)$clusters);
+    nclusters <- append(nclusters, nc);
+  }
+  return(nclusters)
+}
+
+
+plotClusterNumbers <- function(dirListPer, dirListRnd, type = c("bar", "box")[1], ...) {
+# Plot the barplot of cluster numbers plus error bars.
+  ncPer <- clusterNumber(dirListPer);
+  ncRnd <- clusterNumber(dirListRnd);
+  lenP <- length(ncPer);
+  lenR <- length(ncRnd);
+  dfm <- data.frame(Arrangement = factor(c(rep("Periodic", lenP), rep("Random", lenR))), NoClusters = c(ncPer, ncRnd));
+  p1 <- ggplot(dfm, aes(fill = Arrangement, factor(NoClusters)));
+  p1 <- p1 + geom_bar(position = "dodge") + labs(x = "Number of Clusters", y = "Count") ;
+  p2 <- ggplot(dfm, aes(Arrangement, NoClusters));
+  p2 <- p2 + geom_boxplot(notch = TRUE, aes(fill = Arrangement)) + geom_jitter() + labs(y = "Number of Clusters");
+  if ( type == "bar" ) {
+    return(p1);
+  }
+  else if ( type == "box" ) {
+    return(p2);
+  }
+}
+
+
+getIntraCusterMeasure <- function(dirList, funct, ...) {
+# Return a vector of the required intra-cluster measure for many directories.
+  measure <- vector();
+  for ( dr in dirList ) {
+    directory <- sprintf("%s/Binding_sites_#1_ch_0", dr);
+    fileName <- dir(directory, full.names = TRUE)[1];
+    dfm <- getCoordinatesData(fileName);
+    if ( funct == "Density" ) {
+      calc <- match.fun(intraClusterDensity);
+    }
+    else if ( funct == "SSDist" ) {
+      calc <- match.fun(intraClusterSS);
+    }
+    else if ( funct == "MPD" ) {
+      calc <- match.fun(intraClusterMPD);
+    }
+    mes <- calc(dfm);
+    measure <- append(measure, mes);
+  }
+  return(measure);
+}
+
+
+boxplotClusterMeasures <- function(dirListPer, dirListRnd, funct = c("SSDist", "Density", "MPD")[1], ...) {
+# Plots in a boxplot the intra-cluster measure that is specified by funct.
+  icPer <- getIntraCusterMeasure(dirListPer, funct);
+  icRnd <- getIntraCusterMeasure(dirListRnd, funct);
+  lenP <- length(icPer);
+  lenR <- length(icRnd);
+  dfm <- data.frame(Arrangement = factor(c(rep("Periodic", lenP), rep("Random", lenR))), intraClust = c(icPer, icRnd));
+  p <- ggplot(dfm, aes(Arrangement, intraClust));
+  p <- p + geom_boxplot(notch = TRUE, aes(fill = Arrangement)) + geom_jitter();
+  # Just to get the right legend.
+  if ( funct == "Density" ) {
+    p <- p + labs(y = "Intra-Cluster Density")
+  }
+  else if ( funct == "SSDist" ) {
+    p <- p + labs(y = "Intra-Cluster Sum Squared Dist")
+  }
+  else if ( funct == "MPD" ) {
+    p <- p + labs(y = "Intra-Cluster Mean Pair-wise Dist")
+  }
+  # Perform a Man-Witney-Wilcoxon test (U-test)
+  uTest <- wilcox.test(icPer, icRnd);
+  p <- p + ggtitle(sprintf("U-Test p value: %.3e", uTest$p.value))
+  return(p)
+}
+
 
 clusterPairsFreqs <- function(dirList) {
 # Return a matrix (data frame) of the contacts coocurence.
   # Firstly  generate a zero dfm with the appropriate names.
   dd <- getCoordinatesData(dir(sprintf("%s/Binding_sites_#1_ch_0", dirList[2]), full.names = TRUE)[1]);
-  rownames(dd) <- as.character(seq(1, 38)); # REMOVE THIS KLUDGE ASAP.
   xx <- replicate(length(rownames(dd)), rep(0.0, length(rownames(dd))));
   dff <- data.frame(xx , row.names = rownames(dd));
   names(dff) <- rownames(dd);
@@ -364,7 +445,6 @@ clusterPairsFreqs <- function(dirList) {
     directory <- sprintf("%s/Binding_sites_#1_ch_0", dr);
     fileName <- dir(directory, full.names = TRUE)[1];
     dfm <- getCoordinatesData(fileName);
-    rownames(dfm) <- as.character(seq(1, length(rownames(dfm)))); # REMOVE THIS KLUDGE ASAP
     clust <- dbscanClustering(dfm)$clusters;
     for ( i in 1:length(clust) ) {
       ni <- names(clust[i]);
