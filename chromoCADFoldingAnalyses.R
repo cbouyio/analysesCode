@@ -8,13 +8,14 @@ library("MASS");
 library("RColorBrewer");
 library("ggplot2");
 library("gridExtra");
-library("fields");
 library("lattice");
+library("scatterplot3d");
 
 
-########################
+
+###############################################################################
 ## Low level functions - Access, store and basic calculations on folding data.
-########################
+###############################################################################
 
 # Read data from singular files as well as collections (directories etc.).
 
@@ -203,7 +204,7 @@ intraClusterSS <- function(dframe, e = 90, cp = 2, ...) {
   clusterDists <- vector();
   for (i in seq(noClusters)) {
     dfCluster <- dframe[clusterVector == i, ]; # Get a subset of the data frame with the points corresponding to the cluster i.
-    icSS <- withinClusterSS(dfCluster);
+    icSS <- withinClusterSS(dfCluster)/nrow(dfCluster);
     clusterDists <- append(clusterDists, icSS);
   }
   names(clusterDists) <- sprintf("Cluster-%i", seq(noClusters));
@@ -286,12 +287,11 @@ gyrationRadius <- function(fileName) {
 
 
 
-
-#######################
+###############################################################################
 ## High level functions - Analyse and plot chromosome folding single file data.
-#######################
+###############################################################################
 
-plotFiber <- function(fileName, lineWidth = 3, subtitle = "Demo", op = TRUE, ...) {
+plotFibre <- function(fileName, lineWidth = 3, subtitle = "Demo", op = FALSE, ...) {
 # Baseline 3d plotting function of the fibre.
   if (op == TRUE) {
     open3d(windowRect = c(windowRect = c(0, 0, 800, 800)));
@@ -303,21 +303,42 @@ plotFiber <- function(fileName, lineWidth = 3, subtitle = "Demo", op = TRUE, ...
 }
 
 
-plotFiberInteractions <- function(directoryName, sizeLine = 2, sizePoint = 5, ...) {
+plotFibreInteractions <- function(directoryName, sizeLine = 2, sizePoint = 5, ...) {
 # Plot the fibre as well as the interaction sites.
 # Works only for interaction site families on one chromosome!
-  tl <- substr(directoryName, 1, nchar(directoryName)-1);
-  tl <- gsub("_", " ", tl);
+  tlt <- substr(directoryName, 1, nchar(directoryName) - 1);
+  tlt <- tail(strsplit(tl, "_")[[1]], n = 1);
   bindingSitesDirsList <- Sys.glob(sprintf("%s/Binding_sites_#*", directoryName));
   fileNameFiber <- dir(sprintf("%s/Coordonnees_ADN_ch_0/", directoryName), full.names = TRUE);
-  plotFiber(fileNameFiber, sizeLine, subtitle = "", ...);
+  plotFibre(fileNameFiber, sizeLine, subtitle = "", main =  sprintf("Fibre-interaction sites plot %s", tlt), ...);
   # Get the number of interacting families to assign different colour.
-  colours <- rainbow(length(bindingSitesDirsList));
+  cols <- rainbow(length(bindingSitesDirsList));
   for (i in 1:length(bindingSitesDirsList)) {
     fileNameInter <- dir(sprintf("%s/Binding_sites_#%i_ch_0/", directoryName, i), full.names = TRUE);
     dfInter <- getCoordinatesData(fileNameInter);
-    points3d(dfInter$rfin.0., dfInter$rfin.1., dfInter$rfin.2., size = sizePoint, col = colours[i], ...);
+    points3d(dfInter$rfin.0., dfInter$rfin.1., dfInter$rfin.2., size = sizePoint, col = cols[i], ...);
     texts3d(dfInter$rfin.0., dfInter$rfin.1., dfInter$rfin.2., texts = rownames(dfInter), adj = c(-0.1,-0.1), ...);
+  }
+}
+
+
+plotFibreReport <- function(dirName, lineSize = 2, ...) {
+# A 2-dimensional 3D plot. (just for the reporting.
+  # some code duplication with the previous function.
+  tlt <- substr(dirName, 1, nchar(dirName) - 1);
+  tlt <- tail(strsplit(tlt, "_")[[1]], n = 1);
+  bindingSitesDirsList <- Sys.glob(sprintf("%s/Binding_sites_#*", dirName));
+  fileNameFiber <- dir(sprintf("%s/Coordonnees_ADN_ch_0/", dirName), full.names = TRUE);
+  dFibre <- getCoordinatesData(fileNameFiber, point = "end");
+  sc <- scatterplot3d(dFibre, type = "l", box = FALSE, lwd = lineSize, xlab = "x-axis", ylab = "y-axis", zlab = "z-axis", main = paste("Fibre-interaction sites plot", tlt, sep = " "), lty.grid = "dotted", color = "darkgrey", ...);
+  # Different colours for different interacting families.
+  cols <- rainbow(length(bindingSitesDirsList));
+  for (i in 1:length(bindingSitesDirsList)) {
+    fileNameInter <- dir(sprintf("%s/Binding_sites_#%i_ch_0/", dirName, i), full.names = TRUE);
+    dInter <- getCoordinatesData(fileNameInter);
+    sc$points(dInter, pch = 16, col = cols[i], ...);
+    txt2d <- sc$xyz.convert(dInter);
+    text(txt2d$x, txt2d$y, labels = rownames(dInter), cex = 0.75, pos = 3);
   }
 }
 
@@ -383,7 +404,7 @@ plotClusterNumbers <- function(dirListPer, dirListRnd, type = c("bar", "box")[1]
   p1 <- ggplot(dfm, aes(fill = Arrangement, factor(NoClusters)));
   p1 <- p1 + geom_bar(position = "dodge") + labs(x = "Number of Clusters", y = "Count") ;
   p2 <- ggplot(dfm, aes(Arrangement, NoClusters));
-  p2 <- p2 + geom_boxplot(notch = TRUE, aes(fill = Arrangement))  + labs(y = "Number of Clusters");
+  p2 <- p2 + geom_boxplot(aes(fill = Arrangement))  + labs(y = "Number of Clusters");
   if ( jitt == TRUE) {
     p2 <- p2 + geom_jitter();
   }
@@ -427,7 +448,7 @@ boxplotClusterMeasures <- function(dirListPer, dirListRnd, funct = c("SSDist", "
   lenR <- length(icRnd);
   dfm <- data.frame(Arrangement = factor(c(rep("Periodic", lenP), rep("Random", lenR))), intraClust = c(icPer, icRnd));
   p <- ggplot(dfm, aes(Arrangement, intraClust));
-  p <- p + geom_boxplot(notch = TRUE, aes(fill = Arrangement));
+  p <- p + geom_boxplot(aes(fill = Arrangement));
   if ( jitt == TRUE ) {
     p <- p + geom_jitter();
   }
@@ -546,9 +567,9 @@ contactFrequenciesMatrix <- function(dirList, contactRadious, type = c("circular
     dd <- getCoordinatesData(fileName);
     # We keep all the cylinders apart for the last one which is a duplicate in circular chromosomes.
     dd <- dd[-nrow(dd),];
-    ddDist <- rdist(dd);
-    ddDist1 <- (ddDist < contactRadious) * 1 # Amazing trick!
-    contaFreq <- contaFreq + ddDist1
+    ddDist <- dist(dd, diag = TRUE, upper = TRUE);
+    ddDist1 <- (as.matrix(ddDist) < contactRadious & as.matrix(ddDist) != 0) * 1; # Amazing trick!!!
+    contaFreq <- contaFreq + ddDist1;
   }
   # Divide with the number of experiments to give the frequency.
   return(list(contacts = contaFreq, freqs = contaFreq / length(dirList)))
@@ -556,9 +577,9 @@ contactFrequenciesMatrix <- function(dirList, contactRadious, type = c("circular
 
 
 
-########################
+###############################################################################
 # Higher level functions - provide plots and stats for collections of output files.
-########################
+###############################################################################
 
 # Collection fiber visualisation functions.
 
@@ -569,7 +590,7 @@ plotCollectionFiber <- function(directoryName, ...) {
   tl <- gsub("_", " ", tl);
   open3d(windowRect = c(windowRect = c(0, 0, 800, 800)));
   for (fl in filesList[2:length(filesList)]) {
-    plotFiber(fl, subtitle = tl, op = FALSE, ...);
+    plotFibre(fl, subtitle = tl, op = FALSE, ...);
     readline("Press <Enter> for the next plot.");
   }
 }
@@ -639,9 +660,9 @@ plotCollectionTraceRatios <- function(directoryListPer, directoryListRnd, lineW 
 
 # Cluster and interactions visualisation functions.
 
-visualiseClusterCooccurance <- function(cooccM, n = 16, tlt = "", ...) {
+visualiseClusterCooccurance <- function(cooccM, n = 32, tlt = "", ...) {
 # Visualise the cluster coocurance matrix.
-  levelplot(as.matrix(cooccM[nrow(cooccM):1,]), col.regions = rev(heat.colors(n)), ylab = "Site Position", xlab = "Site Position", main = sprintf("Cluster Co-occurence %s", tlt), ylim = c(nrow(cooccM):0), ...);
+  levelplot(as.matrix(cooccM[nrow(cooccM):1,]), aspect = "iso", scales = list(x = list(rot = 90)), col.regions = rev(heat.colors(n)), ylab = "Site Position", xlab = "Site Position", main = sprintf("Cluster Co-occurence %s", tlt), axis(2, labels = rownames(cooccM)), ...);
 }
 
 
@@ -738,57 +759,63 @@ clustergramDBscan <- function(directoryList, line.width = 0.004) {
 }
 
 
-plotClusterCooccDist <- function(contactFreqs, noCyl, molecule = c("circular", "linear")[1], k = 11, type = c("contour", "smooth", "ggplot")[2], ...) {
-# Plot the contact frequencies of all the pairs of interaction sites, between random and regular configurations.
+clusterCooccurenceDist <- function(contactFreqs, noCyl, molecule = c("circular", "linear")[1], includeZeros = TRUE, ...) {
+# Return a dataframe of the distance (in cylinders)
 ## The contactFreqs matrix is a data.frame with colnames and rownames the cylinder numbers.
   dst <- vector();
   freq <- vector();
   for ( rname in rownames(contactFreqs) ) {
     for ( cname in colnames(contactFreqs) ) {
-      if ( rname != cname & contactFreqs[rname, ][[cname]] != 0 ) {
+      if ( rname != cname & as.numeric(cname) > as.numeric(rname) ) { # second condition is to avoid double counts on the symmetric contactFreqs matrix.
         freq <- append(freq, contactFreqs[rname, ][[cname]]);
         if ( molecule == "linear" ) {
           dst <- append(dst, abs(as.numeric(rname) - as.numeric(cname)));
         }
         else if ( molecule == "circular" ) {
-          dstMod <- min(abs(as.numeric(rname) - as.numeric(cname)), abs(abs(noCyl - as.numeric(cname)) - as.numeric(rname)));
+          dstMod <- min(abs(as.numeric(rname) - as.numeric(cname)), abs(noCyl - abs(as.numeric(rname) - as.numeric(cname))));
           dst <- append(dst, dstMod);
         }
       }
     }
   }
+  return(data.frame(dst = dst, freq = freq))
+}
+
+
+plotClustCooccurDistance <- function(cooccDist, tlt = "", k = 11, type = c("contour", "smooth", "ggplot")[2], ...) {
+# Plot the contact frequencies of all the pairs of interaction sites, between random and regular configurations.
   # Get some pretty colors.
   myCols <- rev(brewer.pal(k, "RdYlBu"));
   # Do te plotting with kernel contours.
   if ( type == "contour" ) {
     # Compute 2D kernel density, see MASS book, pp. 130-131
-    z <- kde2d(dst, freq, n = 100);
-    plot(dst, freq, pch = 19, cex = 0.33, col = "red", xlab = "Distance in Cyliders", ylab = "Frequency of co-clustering");
+    z <- kde2d(cooccDist$dst, cooccDist$freq, n = 100);
+    plot(cooccDist$dst, cooccDist$freq, pch = 19, cex = 0.33, col = "red", xlab = "Distance in cylinders", ylab = "Frequency of co-clustering", main = sprintf("Contour scatterplot for %s", tlt), ...);
     contour(z, drawlabels = FALSE, nlevels = k, col = myCols, add = TRUE);
   }
   # Do the plotting with the smoothed scatterplot.
   else if ( type == "smooth" ) {
-    smoothScatter(dst, freq, nrpoints = 0.0 * length(dst), colramp = colorRampPalette(myCols), pch = 19, cex = .25, xlab = "Distance in Cylinders", ylab = "Frequency of co-clustering");
+    smoothScatter(cooccDist$dst, cooccDist$freq, nrpoints = 0.0 * length(cooccDist$dst), colramp = colorRampPalette(myCols), pch = 19, cex = .25, xlab = "Distance in cylinders", ylab = "Frequency of co-clustering", main = sprintf("Smoothed scatterplot of %s", tlt), ...);
   }
   else if ( type == "ggplot" ) {
-    dd <- data.frame(Distance = dst, Frequency = freq);
-    p <- ggplot(dd, aes(Distance, Frequency));
-    p <- p + stat_bin2d(bins = floor(noCyl / 50));
+    #TODO make a separate ggplot2 function to use facets and print both Per and Rnd.
+    p <- ggplot(cooccDist, aes(dst, freq));
+    p <- p + stat_bin2d(bins = ceiling(sqrt(max(cooccDist$dst)))) + labs(title = sprintf("Binned scatterplot of %s", tlt), x = "Distance in cylinders", y = "Frequency of co-clustering");
     return(p)
   }
 }
 
 
-visualiseContactFreqs <- function(cfm, tlt, dat = c("contacts", "freqs")[1], n = 128, square = TRUE, type = c("level", "gglot")[1], ...) {
+visualiseContactFreqs <- function(cfm, tlt, dat = c("contacts", "freqs")[1], n = 128, square = FALSE, type = c("level", "gglot")[1], rst = FALSE, ...) {
 # Generate an image plot of the contact probability matrix of the fibre.
   # cfm is the return list of the contactFrequenciesMatrix.
   if ( square == FALSE ) {
-    cfmDT <- cfm$freqs[nrow(cfm$freqs):1,];
+    cfmDT <- cfm$freqs;
   }
   else if ( square == TRUE ) {
-    cfmDT <- apply(cfm$freqs[nrow(cfm$freqs):1,], c(1, 2), sqrt);
+    cfmDT <- apply(cfm$freqs, c(1, 2), sqrt);
   }
-  levelplot(cfmDT, col.regions = rev(heat.colors(n)), useRaster = TRUE, ylab = "Cylinder Num.", xlab = "Cylinder Num.", main = sprintf("Contact Frequencies %s", tlt), ylim = c(nrow(cfm$freqs):0));
+  levelplot(cfmDT, aspect = "iso", col.regions = rev(heat.colors(n)), useRaster = rst, ylab = "Cylinder Num.", xlab = "Cylinder Num.", main = sprintf("Contact Frequencies %s", tlt), xlim = c(1:nrow(cfm$freqs)), ylim = c(1:nrow(cfm$freqs)), ...);
 }
 
 
