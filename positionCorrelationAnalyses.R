@@ -37,7 +37,7 @@ modulo_coordinates <- function(pos, per, ...) {
 
 ## Analysis functions.
 
-neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, n = 10, cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
+neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, n = 20, geneSubset = "", cc = c("spearman", "pearson", "kendall")[1], cyclic = TRUE, ...) {
 # Calculate the correlation coefficient between the gene expression profiles of a gene and the average of its N neighbours.
   neiCorr <- vector();
   geneNames <- vector();
@@ -56,15 +56,23 @@ neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, 
   else {
     geneCoords <- genePos;
   }
+  # Get the subset of genes to work with
+  if ( nchar(geneSubset) == 0 ) {
+    geneList <- rownames(geMat)
+  }
+  else {
+    geneList <- scan(geneSubset, what = "character")
+  }
   # Calculating correlations.
-  for ( i in 1:nrow(geMat) ) {
-    geneExPr <- geMat[i,];
-    geneName <- rownames(geneExPr)[1];
+  for ( gn in geneList ) {
+    geneExPr <- geMat[gn,];
+    geneName <- gn;   #TODO change the variable in the rest of the code and test.
     # Checks the existence of the geneName...
     if ( geneName %in% names(geneCoords) ) {
       geneIndex <- which(geneCoords == geneCoords[[geneName]])[1];
     }
-    else {next}
+    #TODO check this condition! else {stop(sprintf("Can not find gene %s in the positions file", geneName))}
+    else { next }
     # Check the positioning of the gene index and generate the neighbourhood.
     if ( geneIndex + n <= noGenes & geneIndex - n > 0 ) {
       neighCoords <- c(seq(geneIndex - n, length = n), seq(geneIndex + 1, length = n));
@@ -85,7 +93,7 @@ neighbour_correlation <- function(expressionMatrix, genePositions, per = FALSE, 
   }
   # Assigne the names.
   names(neiCorr) <- geneNames;
-  neiCorr <- neiCorr[names(geneCoords)];
+  geneCoords <- geneCoords[names(neiCorr)];
   return(list(corr = neiCorr, pos = geneCoords))
 }
 
